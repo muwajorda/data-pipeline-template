@@ -1,0 +1,17 @@
+name: bioinformatics-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - biopython
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - fastqc
+  - bwa
+  - samtools
+  - bedtools
