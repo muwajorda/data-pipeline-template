@@ -1,0 +1,29 @@
+# Example configuration for biological data pipeline
+
+pipeline:
+  name: "Biological Data Pipeline"
+  version: "1.0"
+
+input:
+  data_source: "genomic_sequence"
+  file_format: "fastq"
+  batch_size: 1000
+
+steps:
+  - name: "Quality Control"
+    tool: "fastqc"
+    parameters:
+      quality_threshold: 30
+  - name: "Alignment"
+    tool: "bwa"
+    parameters:
+      reference_genome: "hg38"
+  - name: "Variant Calling"
+    tool: "gatk"
+    parameters:
+      min_quality: 20
+
+output:
+  results:
+    format: "vcf"
+    path: "/data/results/variants.vcf"
