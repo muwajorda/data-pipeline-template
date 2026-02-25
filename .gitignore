@@ -1,0 +1,33 @@
+# .gitignore for biological data and Python projects
+
+# Biologically relevant files
+*.fasta
+*.fastq
+*.bam
+*.bed
+*.vcf
+*.gff
+*.gtf
+*.sra
+*.json
+*.xml
+
+# Python specific
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.env
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
