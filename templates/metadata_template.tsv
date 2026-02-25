@@ -1,0 +1,5 @@
+# Metadata Template
+
+| sample_id | sample_name | data_type | condition | replicate | sequencing_platform | library_prep_kit | read_length | expected_depth | notes |
+|-----------|-------------|-----------|-----------|-----------|---------------------|-------------------|-------------|----------------|-------|
+|           |             | RNA-seq/ChIP-seq/ATAC-seq |           |           |                     |                   |             |                |       |
