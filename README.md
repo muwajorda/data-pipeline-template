@@ -1,43 +1,27 @@
-# Data Pipeline Template
+# Biological Data Pipeline Template
 
-## Overview
-A minimal, production-aware data pipeline template designed for take-home assignments and small ETL workflows.
+This repository provides a template for building biological data pipelines. The purpose of this template is to facilitate the analysis and management of biological data derived from various sources, including genomic, transcriptomic, and proteomic data. 
 
-This template emphasizes:
-- Config-driven execution
-- Explicit schema validation
-- Separation of concerns
-- Cloud-aware I/O abstraction
-- Containerization
-- Basic test coverage
+## Features
+- Pre-defined structure for organizing data and analysis scripts.
+- Sample configuration files for common analysis tasks.
+- Includes documentation for each component of the pipeline.
+- Examples of use cases and typical workflows.
 
-## Architecture
-- `pipeline.py` - orchestration
-- `validate.py` - schema enforcement
-- `transform.py` - business logic
-- `io.py` - storage abstraction
-- Dockerized for reproducibility
+## Getting Started
+To get started with this template, clone the repository and adapt the configuration files according to your specific data types and analysis needs.
 
-## Run Locally
 ```bash
-pip install -r requirements.txt
-python -m pipeline_template.pipeline
+git clone https://github.com/muwajorda/data-pipeline-template.git
+cd data-pipeline-template
+# Edit configuration files as needed
 ```
 
-## Run Tests
-```bash
-pytest
-```
+## Documentation
+Please refer to the individual documentation files within the `docs/` directory for detailed explanations of the components and how to effectively utilize this template. 
 
-## Docker
-```bash
-docker build -t pipeline-template .
-docker run pipeline-template
-```
+## Contributing
+Contributions are welcome! Please feel free to submit a pull request or raise an issue if you would like to enhance this template or if you encounter any problems.
 
-## Design Principles
-- Fail loudly
-- Avoid silent schema drift
-- Separate transformation from orchestration
-- Keep storage abstracted
-- Make deployment trivial
+## License
+This project is licensed under the MIT License - see the LICENSE.md file for details.
