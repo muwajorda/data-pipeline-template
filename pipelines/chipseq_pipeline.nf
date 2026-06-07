@@ -2,217 +2,228 @@
 
 nextflow.enable.dsl=2
 
-// Patient-aware ChIP-seq pipeline with metadata tracking
-// Supports multi-sample patient cohorts with differential binding analysis
+params.input_dir = "./data/chipseq"
+params.output_dir = "./results/chipseq"
+params.reference_genome = ""
+params.blacklist_regions = ""
+params.metadata_file = "./chipseq_metadata.csv"
 
-params {
-    patient_data_dir = "data/patients"
-    metadata_file = "metadata/patient_metadata.csv"
-    bowtie2_index = "reference/bowtie2_index/hg38"
-    results_dir = "results"
-}
-
-process load_patient_metadata {
-    output:
-    stdout
-
-    script:
-    """
-    python3 << 'EOF'
-    import csv
-    with open('${params.metadata_file}', 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            print(f"{row['patient_id']},{row['sample_id']},{row['condition']},{row['fastq_file']}")
-    EOF
-    """
-}
-
-process fastqc {
-    tag "${patient_id}/${sample_id}"
-    publishDir "${params.results_dir}/${patient_id}/qc_reports", mode: 'copy'
+process chipseq_metadata_extraction {
+    publishDir "${params.output_dir}/metadata", mode: 'copy'
     
     input:
-    tuple val(patient_id), val(sample_id), val(condition), path(fastq_files)
-
+    path metadata_file
+    
     output:
-    tuple val(patient_id), val(sample_id), val(condition), path("*.html"), path("*.zip")
-
+    path "chipseq_metadata.json"
+    path "sample_mapping.json"
+    
     script:
     """
-    fastqc ${fastq_files} -o .
-    """
-}
-
-process trim {
-    tag "${patient_id}/${sample_id}"
-    publishDir "${params.results_dir}/${patient_id}/trimmed_reads", mode: 'copy'
-    
-    input:
-    tuple val(patient_id), val(sample_id), val(condition), path(fastq_file)
-
-    output:
-    tuple val(patient_id), val(sample_id), val(condition), path("${sample_id}_trimmed.fastq"), path("${sample_id}_trim_metrics.txt")
-
-    script:
-    """
-    trimmomatic SE -phred33 ${fastq_file} ${sample_id}_trimmed.fastq \
-        SLIDINGWINDOW:4:20 MINLEN:36 2> ${sample_id}_trim_metrics.txt
-    """
-}
-
-process bowtie2_align {
-    tag "${patient_id}/${sample_id}"
-    publishDir "${params.results_dir}/${patient_id}/alignments", mode: 'copy'
-    memory '16 GB'
-    cpus 8
-    
-    input:
-    tuple val(patient_id), val(sample_id), val(condition), path(trimmed_fastq), path(trim_metrics)
-
-    output:
-    tuple val(patient_id), val(sample_id), val(condition), path("${sample_id}.bam"), path("${sample_id}_alignment_metrics.txt")
-
-    script:
-    """
-    bowtie2 -x ${params.bowtie2_index} -U ${trimmed_fastq} \
-        --threads 8 -S ${sample_id}.sam 2> ${sample_id}_alignment_metrics.txt
-    
-    samtools view -bS ${sample_id}.sam | samtools sort -o ${sample_id}.bam -
-    samtools index ${sample_id}.bam
-    rm ${sample_id}.sam
-    """
-}
-
-process macs2_peak_calling {
-    tag "${patient_id}/${sample_id}"
-    publishDir "${params.results_dir}/${patient_id}/peaks", mode: 'copy'
-    
-    input:
-    tuple val(patient_id), val(sample_id), val(condition), path(bam_file), path(alignment_metrics)
-
-    output:
-    tuple val(patient_id), val(sample_id), val(condition), path("${sample_id}_peaks.narrowPeak"), path("${sample_id}_peaks_metrics.txt")
-
-    script:
-    """
-    macs2 callpeak -t ${bam_file} -f BAM -g hs -n ${sample_id}_peaks -B --outdir .
-    
-    # Generate peak calling metrics
-    wc -l ${sample_id}_peaks.narrowPeak > ${sample_id}_peaks_metrics.txt
-    """
-}
-
-process diffbind_analysis {
-    tag "${patient_id}"
-    publishDir "${params.results_dir}/${patient_id}", mode: 'copy'
-    
-    input:
-    tuple val(patient_id), path(peaks_files), val(conditions)
-
-    output:
-    path("${patient_id}_differential_binding_results.txt"), emit: results
-    path("${patient_id}_diffbind_report.html"), emit: report
-
-    script:
-    """
-    python3 << 'DIFFBIND_EOF'
+    #!/usr/bin/env python3
     import json
-    import os
+    import pandas as pd
     
-    # Parse peak files and conditions
-    peaks_list = """${peaks_files}""".strip().split()
-    conditions = """${conditions}""".strip().split(',')
+    df = pd.read_csv('${metadata_file}')
     
-    diffbind_results = {
-        'patient_id': '${patient_id}',
-        'analysis_type': 'differential_binding',
-        'samples': []
+    # Extract ChIP-seq specific metadata
+    metadata = {
+        'pipeline': 'ChIP-seq',
+        'total_samples': len(df),
+        'sample_types': df['sample_type'].unique().tolist() if 'sample_type' in df.columns else [],
+        'transcription_factors': df['transcription_factor'].unique().tolist() if 'transcription_factor' in df.columns else [],
+        'cell_types': df['cell_type'].unique().tolist() if 'cell_type' in df.columns else [],
+        'samples': df.to_dict(orient='records')
     }
     
-    for i, peak_file in enumerate(peaks_list):
-        if os.path.exists(peak_file):
-            sample_data = {
-                'peak_file': peak_file,
-                'condition': conditions[i] if i < len(conditions) else 'unknown',
-                'peak_count': sum(1 for line in open(peak_file))
+    # Create sample mapping (input vs control)
+    sample_mapping = {}
+    for idx, row in df.iterrows():
+        if 'sample_id' in row:
+            control = row.get('control_sample', '')
+            sample_mapping[row['sample_id']] = {
+                'sample_type': row.get('sample_type', 'unknown'),
+                'control': control,
+                'transcription_factor': row.get('transcription_factor', 'unknown')
             }
-            diffbind_results['samples'].append(sample_data)
     
-    # Write results
-    with open('${patient_id}_differential_binding_results.txt', 'w') as f:
-        json.dump(diffbind_results, f, indent=2)
+    with open('chipseq_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
     
-    # Generate HTML report
-    with open('${patient_id}_diffbind_report.html', 'w') as f:
-        f.write('<html><body>')
-        f.write('<h1>Differential Binding Analysis Report</h1>')
-        f.write(f'<p>Patient ID: {diffbind_results["patient_id"]}</p>')
-        f.write('<h2>Samples:</h2><ul>')
-        for sample in diffbind_results['samples']:
-            f.write(f'<li>{sample["peak_file"]} ({sample["condition"]}) - {sample["peak_count"]} peaks</li>')
-        f.write('</ul></body></html>')
-    DIFFBIND_EOF
+    with open('sample_mapping.json', 'w') as f:
+        json.dump(sample_mapping, f, indent=2)
     """
 }
 
-process generate_patient_report {
-    tag "${patient_id}"
-    publishDir "${params.results_dir}/${patient_id}", mode: 'copy'
+process chipseq_qc_filter {
+    publishDir "${params.output_dir}/qc", mode: 'copy'
     
     input:
-    tuple val(patient_id), path(diffbind_results), path(diffbind_report)
-
+    tuple val(sample_id), path(bam_file)
+    
     output:
-    path("${patient_id}_chipseq_patient_report.txt")
-
+    tuple val(sample_id), path("${sample_id}_qc.json")
+    path "${sample_id}_filtered.bam"
+    
     script:
     """
-    cat > ${patient_id}_chipseq_patient_report.txt << 'REPORT_EOF'
-    ================== ChIP-seq PATIENT ANALYSIS REPORT ==================
-    Patient ID: ${patient_id}
-    Analysis Date: \$(date)
-    Analysis Type: Chromatin Immunoprecipitation Sequencing
+    #!/usr/bin/env python3
+    import json
+    import subprocess
     
-    Differential Binding Analysis:
-    \$(cat ${diffbind_results})
+    # Calculate QC metrics
+    result = subprocess.run(['samtools', 'flagstat', '${bam_file}'],
+                          capture_output=True, text=True)
+    flagstat = result.stdout
     
-    =====================================================================
-    REPORT_EOF
+    result = subprocess.run(['samtools', 'view', '-c', '${bam_file}'],
+                          capture_output=True, text=True)
+    total_reads = int(result.stdout.strip())
+    
+    # Filter BAM: remove low quality, duplicates, unmapped
+    subprocess.run(['samtools', 'view', '-b', '-q', '30', '-F', '1804',
+                    '${bam_file}', '-o', '${sample_id}_filtered.bam'])
+    
+    result = subprocess.run(['samtools', 'view', '-c', '${sample_id}_filtered.bam'],
+                          capture_output=True, text=True)
+    filtered_reads = int(result.stdout.strip())
+    
+    qc = {
+        'sample_id': '${sample_id}',
+        'total_reads': total_reads,
+        'filtered_reads': filtered_reads,
+        'filtering_efficiency': (filtered_reads / total_reads * 100) if total_reads > 0 else 0,
+        'flagstat': flagstat
+    }
+    
+    with open('${sample_id}_qc.json', 'w') as f:
+        json.dump(qc, f, indent=2)
     """
 }
 
-workflow {
-    // Load patient metadata
-    metadata_ch = load_patient_metadata()
-        .splitCsv()
-        .map { row -> tuple(row[0], row[1], row[2], file(row[3])) }
+process peak_calling {
+    publishDir "${params.output_dir}/peaks", mode: 'copy'
     
-    // QC process
-    qc_results = fastqc(metadata_ch)
+    input:
+    tuple val(sample_id), path(sample_bam)
+    path control_bam
     
-    // Trimming
-    trimmed = trim(metadata_ch)
+    output:
+    tuple val(sample_id), path("${sample_id}_peaks.narrowPeak")
+    path "${sample_id}_model.r"
     
-    // Alignment
-    aligned = bowtie2_align(trimmed)
+    script:
+    """
+    macs2 callpeak \
+        -t ${sample_bam} \
+        -c ${control_bam} \
+        -f BAM \
+        -g hs \
+        -n ${sample_id} \
+        --outdir . \
+        -p 0.01 \
+        --bdg \
+        -m 5 50
+    """
+}
+
+process annotate_peaks {
+    publishDir "${params.output_dir}/annotated_peaks", mode: 'copy'
     
-    // Peak calling
-    peaks = macs2_peak_calling(aligned)
+    input:
+    tuple val(sample_id), path(peak_file)
+    path reference_genome
     
-    // Differential binding analysis grouped by patient
-    diffbind_input = peaks
-        .groupTuple(by: 0)
-        .map { patient_id, sample_ids, conditions, peak_files, metrics -> 
-            tuple(patient_id, peak_files.flatten(), conditions.join(',')) 
-        }
+    output:
+    tuple val(sample_id), path("${sample_id}_annotated.bed")
+    path "${sample_id}_peak_annotation.json"
     
-    diffbind = diffbind_analysis(diffbind_input)
+    script:
+    """
+    #!/usr/bin/env python3
+    import json
+    import subprocess
     
-    // Generate patient-level report
-    patient_report_input = diffbind
-        .map { patient_id, results, report -> 
-            tuple(patient_id, results, report) 
-        }
-    generate_patient_report(patient_report_input)
+    # Annotate peaks using Homer
+    subprocess.run(['annotatePeaks.pl', '${peak_file}',
+                    '${reference_genome}',
+                    '-gtf', 'genes.gtf',
+                    '-o', '${sample_id}_annotated.bed'])
+    
+    # Parse annotation results
+    annotation_summary = {
+        'total_peaks': 0,
+        'peak_types': {},
+        'annotation_file': '${sample_id}_annotated.bed'
+    }
+    
+    with open('peaks', 'r') as f:
+        for line in f:
+            if not line.startswith('#'):
+                annotation_summary['total_peaks'] += 1
+    
+    with open('${sample_id}_peak_annotation.json', 'w') as f:
+        json.dump(annotation_summary, f, indent=2)
+    """
+}
+
+process chipseq_consensus_peaks {
+    publishDir "${params.output_dir}/consensus", mode: 'copy'
+    
+    input:
+    path peak_files
+    
+    output:
+    path "consensus_peaks.bed"
+    path "consensus_summary.json"
+    
+    script:
+    """
+    #!/usr/bin/env python3
+    import json
+    import pandas as pd
+    
+    # Merge peaks from multiple samples
+    peaks = []
+    for peak_file in "${peak_files}".split():
+        df = pd.read_csv(peak_file, sep='\t', header=None,
+                        names=['chrom', 'start', 'end', 'name', 'score'])
+        peaks.append(df)
+    
+    merged = pd.concat(peaks, ignore_index=True)
+    merged = merged.sort_values(['chrom', 'start'])
+    
+    # Find consensus peaks (appearing in multiple samples)
+    consensus = merged.drop_duplicates(subset=['chrom', 'start', 'end'])
+    consensus.to_csv('consensus_peaks.bed', sep='\t', header=False, index=False)
+    
+    summary = {
+        'total_consensus_peaks': len(consensus),
+        'input_samples': len(set("${peak_files}".split())),
+        'chrom_distribution': consensus['chrom'].value_counts().to_dict()
+    }
+    
+    with open('consensus_summary.json', 'w') as f:
+        json.dump(summary, f, indent=2)
+    """
+}
+
+workflow chipseq {
+    take:
+    sample_bams_ch
+    control_bam_ch
+    reference_genome
+    metadata_ch
+    
+    main:
+    chipseq_metadata_extraction(metadata_ch)
+    chipseq_qc_filter(sample_bams_ch)
+    peak_calling(chipseq_qc_filter.out[0], control_bam_ch)
+    annotate_peaks(peak_calling.out, reference_genome)
+    chipseq_consensus_peaks(annotate_peaks.out[0].collect())
+    
+    emit:
+    peaks = annotate_peaks.out
+    metadata = chipseq_metadata_extraction.out
+    consensus_peaks = chipseq_consensus_peaks.out
 }

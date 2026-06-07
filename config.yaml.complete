@@ -1,0 +1,192 @@
+# Complete Data Pipeline Configuration
+# Supports WES, ChIP-seq, RNA-seq, and TACSEQ pipelines
+
+pipelines:
+  wes:
+    name: "Whole Exome Sequencing"
+    enabled: true
+    input_dir: "./data/wes/fastq"
+    reference_genome: "/ref/human_genome.fa"
+    tools:
+      qc: "fastqc"
+      trimming: "trimmomatic"
+      alignment: "bwa"
+      deduplication: "picard"
+      variant_calling: "gatk"
+      annotation: "vep"
+    parameters:
+      min_quality: 20
+      min_depth: 10
+      threads: 8
+    output:
+      vcf: "./results/wes/variants"
+      bam: "./results/wes/alignments"
+      metrics: "./results/wes/qc"
+
+  chipseq:
+    name: "ChIP-sequencing"
+    enabled: true
+    input_dir: "./data/chipseq/fastq"
+    reference_genome: "/ref/human_genome.fa"
+    blacklist_regions: "/ref/hg38-blacklist.bed"
+    tools:
+      peak_calling: "macs2"
+      annotation: "homer"
+      motif_analysis: "homer"
+      consensus: "bedtools"
+    parameters:
+      p_value: 0.01
+      min_peak_length: 50
+      min_score: 100
+      threads: 8
+    output:
+      peaks: "./results/chipseq/peaks"
+      consensus: "./results/chipseq/consensus"
+      annotation: "./results/chipseq/annotated"
+
+  rnaseq:
+    name: "RNA-sequencing"
+    enabled: true
+    input_dir: "./data/rnaseq/fastq"
+    annotation_file: "/ref/genes.gtf"
+    tools:
+      quantification: "salmon"
+      normalization: "deseq2"
+      qc: "fastqc"
+      de_analysis: "deseq2"
+    parameters:
+      min_count: 10
+      min_samples: 2
+      fdr_threshold: 0.05
+      lfc_threshold: 1.0
+      threads: 8
+    output:
+      counts: "./results/rnaseq/counts"
+      normalized: "./results/rnaseq/normalized"
+      de_results: "./results/rnaseq/differential"
+
+  tacseq:
+    name: "TACSEQ (Temporal Accessibility)"
+    enabled: true
+    input_dir: "./data/tacseq/fastq"
+    reference_genome: "/ref/human_genome.fa"
+    tools:
+      peak_calling: "macs2"
+      accessibility: "homer"
+      dynamics: "custom"
+    parameters:
+      p_value: 0.001
+      fdr_threshold: 0.05
+      threads: 8
+    output:
+      peaks: "./results/tacseq/peaks"
+      dynamics: "./results/tacseq/temporal"
+      accessibility: "./results/tacseq/accessibility"
+
+  differential_analysis:
+    name: "Differential Analysis"
+    enabled: true
+    methods:
+      - deseq2
+      - edger
+      - limma
+    visualization:
+      - volcano_plot
+      - heatmap
+      - ma_plot
+    output:
+      de_results: "./results/differential/de_results.csv"
+      plots: "./results/differential/plots"
+      tables: "./results/differential/tables"
+
+  gsea:
+    name: "Gene Set Enrichment Analysis"
+    enabled: true
+    databases:
+      - hallmark
+      - kegg
+      - go
+    parameters:
+      min_size: 15
+      max_size: 500
+      fdr_threshold: 0.05
+    output:
+      results: "./results/gsea/results"
+      plots: "./results/gsea/plots"
+
+  machine_learning:
+    name: "Machine Learning Analysis"
+    enabled: true
+    methods:
+      feature_selection:
+        - random_forest
+        - lasso
+        - correlation
+      classification:
+        - random_forest
+        - gradient_boosting
+        - logistic_regression
+      clustering:
+        - kmeans
+        - hierarchical
+        - dbscan
+    parameters:
+      n_features: 100
+      test_size: 0.2
+      n_splits: 5
+      random_seed: 42
+    output:
+      models: "./results/ml/models"
+      predictions: "./results/ml/predictions"
+      plots: "./results/ml/plots"
+
+# Cloud Integration
+cloud:
+  provider: "s3"
+  s3:
+    bucket: "genomics-data"
+    prefix: "pipelines"
+    region: "us-east-1"
+  gcs:
+    bucket: "genomics-data"
+    project: "your-project"
+  metadata_extraction: true
+
+# Data Quality
+quality_control:
+  enable_qc: true
+  min_coverage: 10
+  min_mappability: 0.8
+  remove_duplicates: true
+  batch_correction: true
+  normalization:
+    method: "quantile"
+    log_transform: true
+
+# Differential Analysis Parameters
+differential_analysis:
+  fdr_threshold: 0.05
+  lfc_threshold: 1.0
+  min_mean_count: 5
+  batch_correction: true
+
+# Output
+output:
+  base_dir: "./results"
+  publish_dir: "./published_results"
+  compress_results: true
+  generate_report: true
+  report_format: "html"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "./logs/pipeline.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# System Resources
+resources:
+  cpu: 8
+  memory_gb: 32
+  temp_dir: "/tmp/pipeline"
+  max_parallel_jobs: 4
