@@ -1,33 +1,32 @@
-# .gitignore for biological data and Python projects
+# dependencies
+node_modules
+.pnp
+.pnp.js
 
-# Biologically relevant files
-*.fasta
-*.fastq
-*.bam
-*.bed
-*.vcf
-*.gff
-*.gtf
-*.sra
-*.json
-*.xml
+# testing
+/.next/
+/coverage
 
-# Python specific
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.env
-venv/
+# production
+/build
+/dist
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
+# misc
+.DS_Store
+*.pem
 
-# Logs
-*.log
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.swp
+# local env files
+.env.local
+.env.*.local
+
+# vercel
+.vercel
+
+# vscode
+.vscode
+*.code-workspace
